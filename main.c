@@ -1,4 +1,3 @@
-//#pragma once
 #include <stdlib.h>
 #include <stdio.h>
 #include <stdarg.h>
@@ -8,7 +7,6 @@
 #include "fmu/sources/config.h"
 #include "fmu/sources/model.h"
 #include "fmi2.c"
-//#include "fmu/sources/all.c"
 
 
 //TODO: Make those values read by the Makefile
@@ -30,6 +28,22 @@
 
 FMU fmu;
 
+/**
+ * @brief Converts an fmi2Status enum value to its corresponding string representation.
+ *
+ * This function takes an fmi2Status value and returns a string that represents the status.
+ * The possible status values and their corresponding strings are:
+ * - fmi2OK: "OK"
+ * - fmi2Warning: "Warning"
+ * - fmi2Discard: "Discard"
+ * - fmi2Error: "Error"
+ * - fmi2Fatal: "Fatal"
+ * - fmi2Pending: "Pending"
+ * - default: "?"
+ *
+ * @param status The fmi2Status value to be converted to a string.
+ * @return A string representing the given fmi2Status value.
+ */
 char * fmi2StatusToString(fmi2Status status) {
 	switch (status) {
 		case fmi2OK: return "OK";
@@ -44,6 +58,19 @@ char * fmi2StatusToString(fmi2Status status) {
 
 
 #define MAX_MSG_SIZE 1000
+/**
+ * @brief Logs messages from the FMU (Functional Mock-up Unit).
+ *
+ * This function is used to log messages from the FMU, providing information about the instance,
+ * status, category, and the message itself. It formats the message using variable arguments.
+ *
+ * @param componentEnvironment A pointer to the component environment (unused in this function).
+ * @param instanceName The name of the FMU instance. If NULL, it defaults to "?".
+ * @param status The status of the FMU, represented as an fmi2Status enum.
+ * @param category The category of the message. If NULL, it defaults to "?".
+ * @param message The message to be logged, which can include format specifiers.
+ * @param ... Additional arguments for the format specifiers in the message.
+ */
 void fmuLogger (void *componentEnvironment, fmi2String instanceName, fmi2Status status,
                fmi2String category, fmi2String message, ...) {
 	char msg[MAX_MSG_SIZE];
@@ -59,12 +86,47 @@ void fmuLogger (void *componentEnvironment, fmi2String instanceName, fmi2Status 
 	printf("%s %s (%s): %s\n", fmi2StatusToString(status), instanceName, category, msg);
 }
 
+/**
+ * @brief Prints an error message to the standard output.
+ *
+ * This function takes a string message as input and prints it to the standard
+ * output followed by a newline character. It then returns 0.
+ *
+ * @param message The error message to be printed.
+ * @return Always returns 0.
+ */
 int error(const char *message) {
 	printf("%s\n", message);
 	return 0;
 }
 
 
+/**
+ * Simulates the behavior of an FMU (Functional Mock-up Unit) over a specified time period.
+ *
+ * @param fmu A pointer to the FMU to be simulated.
+ * @param tEnd The end time of the simulation.
+ * @param h The fixed step size for the simulation.
+ * @param loggingOn A boolean flag indicating whether logging is enabled.
+ * @param nCategories The number of logging categories.
+ * @param categories An array of strings representing the logging categories.
+ * @return An integer indicating the success (1) or failure (0) of the simulation.
+ *
+ * This function performs the following steps:
+ * 1. Declares and initializes necessary variables.
+ * 2. Instantiates the FMU.
+ * 3. Sets up debug logging if required.
+ * 4. Allocates memory for state variables and event indicators.
+ * 5. Sets up the experiment parameters.
+ * 6. Initializes the FMU.
+ * 7. Performs event iteration to update discrete states.
+ * 8. Enters continuous-time mode and starts the simulation loop.
+ * 9. In each simulation step, it advances time, updates states, checks for events, and handles them.
+ * 10. Cleans up by terminating the FMU, freeing allocated memory, and printing a simulation summary.
+ *
+ * The function uses the forward Euler method to advance the state variables.
+ * It also handles time events, state events, and step events during the simulation.
+ */
 static int simulate(FMU *fmu, double tEnd, double h, fmi2Boolean loggingOn, int nCategories, char **categories) {
 	INFO("Entering simulate\n");
 
@@ -126,7 +188,13 @@ static int simulate(FMU *fmu, double tEnd, double h, fmi2Boolean loggingOn, int 
 
 	INFO("Memory allocated\n");
 
-	//TODO: Initatiate the output method
+	//TODO: Initialiser la structure de sortie
+	//La création de l'output ne peut se faire comme ça, les variables sont de différents types
+	
+	//int **output = calloc(nCategories, sizeof(double*));
+	//for (i=0; nCategories; i++) {
+	//	output[i] = calloc(round((tEnd-tStart)/h), sizeof(double));
+	//}
 
 	// setup
 	time = tStart;
@@ -169,6 +237,12 @@ static int simulate(FMU *fmu, double tEnd, double h, fmi2Boolean loggingOn, int 
 
 		INFO("Continuous time mode entered\n");
 		// TODO: Handle the ouput of a row of values
+		//output[0][nSteps]=time;
+
+		// On a absolument besoin du type de la variable car sinon on ne peut pas accéder à ses valeurs
+		// Ici c'est un workaround pour le moment car on utilise BouncingBall  dont on connait les types
+		//fmu->getReal(c, 0, 1, &output[1][nSteps]);
+
 
 		// enter the simulation loop
 		while (time < tEnd) {
@@ -294,11 +368,22 @@ static int simulate(FMU *fmu, double tEnd, double h, fmi2Boolean loggingOn, int 
     return 1; // success
 };
 
+/**
+ * @brief Main function to initialize and run the simulation.
+ *
+ * This function sets up the simulation parameters, loads necessary functions,
+ * and starts the simulation.
+ *
+ * @param argc The number of command-line arguments.
+ * @param argv The array of command-line arguments.
+ *
+ * @return Returns 0 upon successful completion.
+ */
 int main(int argc, char *argv[]) {
 	double tEnd = 3;
 	double h = 0.01;
 	int loggingOn;
-	int nCategories;
+	int nCategories=4+1; //TODO: This should come from a struct that is created by the makefile and read from the xml file
 	char **logCategories;
 
 	loadFunctions(&fmu);

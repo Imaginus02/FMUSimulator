@@ -57,11 +57,6 @@ Base on the [fmuSDK simulator](https://github.com/qtronic/fmusdk) that used the 
 
 The FMU SDK is provided by Synopsys under the BSD 2-Clause License.
 
-The following additional tools are distributed with the FMU SDK under their respective licenses:
-
-- **7z 4.57** by Igor Pavlov, used here to zip and unzip FMUs (7-Zip License for use and distribution).
-- **eXpat 2.0.1** by James Clark, used here to parse the modelDescription.xml file of an FMU 1.0 (MIT License).
-
 #### FMU SDK License Text
 
 Copyright (c) 2008-2018, QTronic GmbH. All rights reserved. The FMU SDK is licensed by the copyright holder under the 2-Clause BSD License:
@@ -72,6 +67,3 @@ Redistribution and use in source and binary forms, with or without modification,
 - Redistributions in binary form must reproduce the above copyright notice, this list of conditions and the following disclaimer in the documentation and/or other materials provided with the distribution.
 
 **THIS SOFTWARE IS PROVIDED BY QTRONIC GMBH "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL QTRONIC GMBH BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.**
-
-- **libxml**, the XML C parser and toolkit of Gnome, used here to parse the modelDescription.xml file of an FMU 2.0 (MIT license).
-- The contribution guide is adapted from **normalize.css** (MIT License) and **chris.beams.io**.
