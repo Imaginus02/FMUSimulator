@@ -1,12 +1,19 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <stdarg.h>
+
+// Headers from the FMI standard
 #include "headers/fmi2TypesPlatform.h"
 #include "headers/fmi2FunctionTypes.h"
 #include "headers/fmi2Functions.h"
+
+// Headers from the FMU file
 #include "fmu/sources/config.h"
 #include "fmu/sources/model.h"
+
+// Other necessary files
 #include "fmi2.c"
+#include "output.c"
 
 
 //TODO: Make those values read by the Makefile
@@ -18,9 +25,13 @@
 #endif
 
 #ifndef DEBUG
-#define INFO(message)
+#define INFO(message, ...)
 #else
-#define INFO(message) printf(message)
+#define INFO(message, ...) do { \
+	char buffer[256]; \
+	snprintf(buffer, sizeof(buffer), message, ##__VA_ARGS__); \
+	printf("%s", buffer); \
+} while (0)
 #endif
 
 
@@ -153,26 +164,26 @@ static int simulate(FMU *fmu, double tEnd, double h, fmi2Boolean loggingOn, int 
 	int nStepEvents = 0;
 	int nStateEvents = 0;
 
+	ScalarVariable * variables;
+	int nVariables;
+
 	INFO("Variables declared\n");
 
 	// instantiate the fmu
-
-	//fmi2Component fmi2Instantiate(fmi2String instanceName, fmi2Type fmuType, fmi2String fmuGUID,
-    //                        fmi2String fmuResourceLocation, const fmi2CallbackFunctions *functions,
-    //                        fmi2Boolean visible, fmi2Boolean loggingOn)
 	c = fmu->instantiate("BouncingBall", fmi2ModelExchange, fmuGUID, NULL, &callbacks, visible, loggingOn);
 	if (!c) return error("could not instantiate model");
 
 	INFO("FMU instantiated\n");
 
-	if (nCategories > 0) {
-		fmi2Flag = fmu->setDebugLogging(c, fmi2True, nCategories, categories);
-		if (fmi2Flag > fmi2Warning) {
-			return error("could not initialize model; failed FMI set debug logging");
-		}
-	}
+	//Set debug logging -- ignored for now TODO: Implement
+	// if (nCategories > 0) {
+	// 	fmi2Flag = fmu->setDebugLogging(c, fmi2True, nCategories, categories);
+	// 	if (fmi2Flag > fmi2Warning) {
+	// 		return error("could not initialize model; failed FMI set debug logging");
+	// 	}
+	// }
 
-	INFO("Debug logging set\n");
+	//INFO("Debug logging set\n");
 
 	// allocate memory
 	nx = getNumberOfContinuousStates(c);
@@ -189,12 +200,16 @@ static int simulate(FMU *fmu, double tEnd, double h, fmi2Boolean loggingOn, int 
 	INFO("Memory allocated\n");
 
 	//TODO: Initialiser la structure de sortie
-	//La création de l'output ne peut se faire comme ça, les variables sont de différents types
+
+	get_variable_list(&variables);
+	nVariables = get_variable_count();
+	// Initialize the output array
+	double **output = (double **)calloc(nVariables + 1, sizeof(double *));
+	for (i = 0; i < nVariables + 1; i++) {
+		output[i] = (double *)calloc((int)tEnd/h+10, sizeof(double)); //Au cas où +10, normallement on devrait pas en avoir besoin TODO: Vérifier
+	}
+
 	
-	//int **output = calloc(nCategories, sizeof(double*));
-	//for (i=0; nCategories; i++) {
-	//	output[i] = calloc(round((tEnd-tStart)/h), sizeof(double));
-	//}
 
 	// setup
 	time = tStart;
@@ -237,10 +252,18 @@ static int simulate(FMU *fmu, double tEnd, double h, fmi2Boolean loggingOn, int 
 
 		INFO("Continuous time mode entered\n");
 		// TODO: Handle the ouput of a row of values
-		//output[0][nSteps]=time;
-
-		// On a absolument besoin du type de la variable car sinon on ne peut pas accéder à ses valeurs
-		// Ici c'est un workaround pour le moment car on utilise BouncingBall  dont on connait les types
+		// Initialize the output array with variable values
+		INFO("Initializing output array for %d variables\n", nVariables);
+		for (i = 0; i < nVariables-1; i++) {
+			printf("Getting variable %s\n", variables[i].name);
+			if (variables[i].type == REAL) {
+				fmu->getReal(c, &variables[i].valueReference, 1, &output[i + 1][0]);
+			} else if (variables[i].type == INTEGER) {
+				fmi2Integer intValue;
+				fmu->getInteger(c, &variables[i].valueReference, 1, &intValue);
+				output[i + 1][0] = (double)intValue;
+			}
+		}
 		//fmu->getReal(c, 0, 1, &output[1][nSteps]);
 
 
@@ -342,7 +365,15 @@ static int simulate(FMU *fmu, double tEnd, double h, fmi2Boolean loggingOn, int 
 				fmi2Flag = fmu->enterContinuousTimeMode(c);
 				if (fmi2Flag > fmi2Warning) return error("could not enter continuous time mode");
 			} // if event
-			// TODO: Output values for this step
+			for (i = 0; i < nVariables-1; i++) {
+				if (variables[i].type == REAL) {
+					fmu->getReal(c, &variables[i].valueReference, 1, &output[i + 1][nSteps]);
+				} else if (variables[i].type == INTEGER) {
+					fmi2Integer intValue;
+					fmu->getInteger(c, &variables[i].valueReference, 1, &intValue);
+					output[i + 1][nSteps] = (double)intValue;
+				}
+			}
 			nSteps++;
 		} // while
 	}
@@ -357,13 +388,27 @@ static int simulate(FMU *fmu, double tEnd, double h, fmi2Boolean loggingOn, int 
     if (prez != NULL) free(prez);
 
 	//print simulation summary
-	    // print simulation summary
     printf("Simulation from %g to %g terminated successful\n", tStart, tEnd);
     printf("  steps ............ %d\n", nSteps);
     printf("  fixed step size .. %g\n", h);
     printf("  time events ...... %d\n", nTimeEvents);
     printf("  state events ..... %d\n", nStateEvents);
     printf("  step events ...... %d\n", nStepEvents);
+
+	//print the output
+	for (i = 0; i < nVariables + 1; i++) {
+		printf("%s: ", variables[i].name);
+		for (int j = 0; j < nSteps; j++) {
+			printf("%f ", output[i][j]);
+		}
+		printf("\n");
+	}
+	
+	//free the output
+	for (i = 0; i < nVariables + 1; i++) {
+		free(output[i]);
+	}
+	free(output);
 
     return 1; // success
 };
@@ -380,7 +425,7 @@ static int simulate(FMU *fmu, double tEnd, double h, fmi2Boolean loggingOn, int 
  * @return Returns 0 upon successful completion.
  */
 int main(int argc, char *argv[]) {
-	double tEnd = 3;
+	double tEnd = 10;
 	double h = 0.01;
 	int loggingOn;
 	int nCategories=4+1; //TODO: This should come from a struct that is created by the makefile and read from the xml file
