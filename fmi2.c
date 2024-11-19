@@ -207,6 +207,7 @@ typedef struct {
     fmi2GetNominalsOfContinuousStatesTYPE *getNominalsOfContinuousStates;
 } FMU;
 
+
 /**
  * @brief Loads the function pointers for the FMU (Functional Mock-up Unit) structure.
  *

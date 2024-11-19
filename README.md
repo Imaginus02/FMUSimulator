@@ -32,6 +32,11 @@ Une fois la compilation terminée, vous pouvez lancer la simulation avec l'exéc
 ./fmusim
 ```
 
+Pour directement afficher un graphique :
+```sh
+./fmusim 1 4 0.01 Step > ./tests/out.txt | python3 ./tests/plot.py
+```
+
 ## Nettoyage
 
 Pour nettoyer les fichiers objets et l'exécutable généré, utilisez la commande :
