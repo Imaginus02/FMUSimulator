@@ -56,7 +56,6 @@ typedef struct {
     int nTimeEvents;                 // number of time events
     int nStateEvents;                // number of state events
     int nStepEvents;                 // number of step events
-    fmi2Boolean loggingOn;          // logging flag
 } SimulationState;
 
 
@@ -108,7 +107,6 @@ char * fmi2StatusToString(fmi2Status status) {
 void fmuLogger (void *componentEnvironment, fmi2String instanceName, fmi2Status status,
                fmi2String category, fmi2String message, ...) {
 	char msg[MAX_MSG_SIZE];
-	char *copy;
 	va_list argp;
 
 	va_start(argp, message);
@@ -134,322 +132,15 @@ int error(const char *message) {
 	return 0;
 }
 
-
-/**
- * Simulates the behavior of an FMU (Functional Mock-up Unit) over a specified time period.
- *
- * @param fmu A pointer to the FMU to be simulated.
- * @param tEnd The end time of the simulation.
- * @param h The fixed step size for the simulation.
- * @param loggingOn A boolean flag indicating whether logging is enabled.
- * @param nCategories The number of logging categories.
- * @param categories An array of strings representing the logging categories.
- * @return An integer indicating the success (1) or failure (0) of the simulation.
- *
- * This function performs the following steps:
- * 1. Declares and initializes necessary variables.
- * 2. Instantiates the FMU.
- * 3. Sets up debug logging if required.
- * 4. Allocates memory for state variables and event indicators.
- * 5. Sets up the experiment parameters.
- * 6. Initializes the FMU.
- * 7. Performs event iteration to update discrete states.
- * 8. Enters continuous-time mode and starts the simulation loop.
- * 9. In each simulation step, it advances time, updates states, checks for events, and handles them.
- * 10. Cleans up by terminating the FMU, freeing allocated memory, and printing a simulation summary.
- *
- * The function uses the forward Euler method to advance the state variables.
- * It also handles time events, state events, and step events during the simulation.
- */
-static int simulate(FMU *fmu, double tEnd, double h, fmi2Boolean loggingOn, int nCategories, char **categories) {
-	INFO("Entering simulate\n");
-
-	int i;
-	double dt, tPre;
-	fmi2Boolean timeEvent, stateEvent, stepEvent, terminateSimulation;
-	double time;
-	int nx;                          // number of state variables
-	int nz;                          // number of state event indicators
-	double *x = NULL;                // continuous states
-	double *xdot = NULL;             // the corresponding derivatives in same order
-	double *z = NULL;                // state event indicators
-	double *prez = NULL;             // previous values of state event indicators
-	fmi2EventInfo eventInfo;         // updated by calls to initialize and eventUpdate
-	fmi2CallbackFunctions callbacks = {fmuLogger, calloc, free, NULL, fmu}; // called by the model during simulation
-	fmi2Component c;                 // instance of the fmu
-	fmi2Status fmi2Flag;             // return code of the fmu functions
-	fmi2Real tStart = 0;             // start time
-	fmi2Boolean toleranceDefined = fmi2False; // true if model description define tolerance
-	fmi2Real tolerance = 0;          // used in setting up the experiment
-	fmi2Boolean visible = fmi2False; // no simulator user interface
-	int nSteps = 0;
-	int nTimeEvents = 0;
-	int nStepEvents = 0;
-	int nStateEvents = 0;
-
-	ScalarVariable * variables;
-	int nVariables;
-
-	INFO("Variables declared\n");
-
-	// instantiate the fmu
-	c = fmu->instantiate("BouncingBall", fmi2ModelExchange, fmuGUID, NULL, &callbacks, visible, loggingOn); //TODO: Parse the name
-	if (!c) return error("could not instantiate model");
-
-	INFO("FMU instantiated\n");
-
-	//Set debug logging -- ignored for now TODO: Implement
-	// if (nCategories > 0) {
-	// 	fmi2Flag = fmu->setDebugLogging(c, fmi2True, nCategories, categories);
-	// 	if (fmi2Flag > fmi2Warning) {
-	// 		return error("could not initialize model; failed FMI set debug logging");
-	// 	}
-	// }
-
-	//INFO("Debug logging set\n");
-
-	// allocate memory
-	nx = getNumberOfContinuousStates(c); // Parseable from the model description, but with a counter on the variables
-	nz = getNumberOfEventIndicators(c); // Parseable from the model description
-
-	x = (double *) calloc(nx, sizeof(double));
-	xdot = (double *) calloc(nx, sizeof(double));
-	if (nz > 0) {
-		z = (double *) calloc(nz, sizeof(double));
-		prez = (double *) calloc(nz, sizeof(double));
-	}
-	if ((!x || !xdot) || (nz > 0 && (!z || !prez))) return error("out of memory");
-
-	INFO("Memory allocated\n");
-
-	//TODO: Initialiser la structure de sortie
-
-	get_variable_list(&variables);
-	nVariables = get_variable_count();
-	// Initialize the output array
-	double **output = (double **)calloc(nVariables + 1, sizeof(double *));
-	for (i = 0; i < nVariables + 1; i++) {
-		output[i] = (double *)calloc((int)tEnd/h+10, sizeof(double)); //Au cas où +10, normallement on devrait pas en avoir besoin TODO: Vérifier
-	}
-
-	
-
-	// setup
-	time = tStart;
-	fmi2Flag = fmu->setupExperiment(c, toleranceDefined, tolerance, tStart, fmi2True, tEnd);
-	if (fmi2Flag > fmi2Warning) {
-		return error("could not initialize model; failed FMI setup experiment");
-	}
-
-	INFO("Experiment setup\n");
-
-	// initialize
-	fmi2Flag = fmu->enterInitializationMode(c);
-	if (fmi2Flag > fmi2Warning) {
-		return error("could not initialize model; failed FMI enter initialization mode");
-	}
-	fmi2Flag = fmu->exitInitializationMode(c);
-	if (fmi2Flag > fmi2Warning) {
-		return error("could not initialize model; failed FMI exit initialization mode");
-	}
-
-	INFO("Initialization mode done\n");
-
-	// event iteration
-	eventInfo.newDiscreteStatesNeeded = fmi2True;
-	eventInfo.terminateSimulation = fmi2False;
-	while (eventInfo.newDiscreteStatesNeeded && !eventInfo.terminateSimulation) {
-		// update discrete states
-		fmi2Flag = fmu->newDiscreteStates(c, &eventInfo);
-		if (fmi2Flag > fmi2Warning) return error("could not set a new discrete state");
-	}
-
-	INFO("Event iteration done\n");
-
-	if (eventInfo.terminateSimulation) {
-		printf("model requested termination at t=%.16g\n", time);
-	} else {
-		// enter Continuous-Time Mode
-		fmi2Flag = fmu->enterContinuousTimeMode(c);
-		if (fmi2Flag > fmi2Warning) return error("could not initialize model; failed FMI enter continuous time mode");
-
-		INFO("Continuous time mode entered\n");
-		// TODO: Handle the ouput of a row of values
-		// Initialize the output array with variable values
-		INFO("Initializing output array for %d variables\n", nVariables);
-		for (i = 0; i < nVariables-1; i++) {
-			printf("Getting variable %s\n", variables[i].name);
-			if (variables[i].type == REAL) {
-				fmu->getReal(c, &variables[i].valueReference, 1, &output[i + 1][0]);
-			} else if (variables[i].type == INTEGER) {
-				fmi2Integer intValue;
-				fmu->getInteger(c, &variables[i].valueReference, 1, &intValue);
-				output[i + 1][0] = (double)intValue;
-			}
-		}
-		//fmu->getReal(c, 0, 1, &output[1][nSteps]);
-
-
-		// enter the simulation loop
-		while (time < tEnd) {
-			INFO("Entering simulation loop\n");
-			// get the current state and derivatives
-			fmi2Flag = fmu->getContinuousStates(c, x, nx);
-			if (fmi2Flag > fmi2Warning) return error("could not retrieve states");
-
-			fmi2Flag = fmu->getDerivatives(c, xdot, nx);
-			if (fmi2Flag > fmi2Warning) return error("could not retrieve derivatives");
-
-			INFO("States and derivatives retrieved\n");
-
-			// advance time
-			tPre = time;
-			time = min(time + h, tEnd);
-			timeEvent = eventInfo.nextEventTimeDefined && time >= eventInfo.nextEventTime;
-			if (timeEvent) time = eventInfo.nextEventTime;
-			dt = time - tPre;
-			fmi2Flag = fmu->setTime(c, time);
-			if (fmi2Flag > fmi2Warning) return error("could not set time");
-
-			INFO("Time set\n");
-
-			// perform one step
-			for (i = 0; i < nx; i++) x[i] += dt * xdot[i]; // forward Euler method
-			fmi2Flag = fmu->setContinuousStates(c, x, nx);
-			if (fmi2Flag > fmi2Warning) return error("could not set continuous states");
-			if (loggingOn) printf("time = %g\n", time);
-
-			INFO("Step performed\n");
-
-			// check for state event
-			for (i = 0; i < nz; i++) prez[i] = z[i];
-			fmi2Flag = fmu->getEventIndicators(c, z, nz);
-			if (fmi2Flag > fmi2Warning) return error("could not retrieve event indicators");
-			stateEvent = fmi2False;
-			for (i = 0; i < nz; i++) stateEvent = stateEvent || (prez[i] * z[i] < 0);
-
-			INFO("State event checked\n");
-
-			// check for step event
-			fmi2Flag = fmu->completedIntegratorStep(c, fmi2True, &stepEvent, &terminateSimulation);
-			if (fmi2Flag > fmi2Warning) return error("could not complete integrator step");
-			if (terminateSimulation) {
-				printf("model requested termination at t=%.16g\n", time);
-				break; // success
-			}
-
-			INFO("Step event checked\n");
-
-			// handle events
-			if (timeEvent || stateEvent || stepEvent) {
-				INFO("Event detected\n");
-				fmi2Flag = fmu->enterEventMode(c);
-				if (fmi2Flag > fmi2Warning) return error("could not enter event mode");
-
-				if (timeEvent) {
-					INFO("Time event\n");
-					nTimeEvents++;
-					if (loggingOn) printf("time event at t=%.16g\n", time);
-				}
-				if (stateEvent) {
-					INFO("State event\n");
-					nStateEvents++;
-					if (loggingOn) for (i = 0; i < nz; i++) printf("state event %s z[%d] at t=%.16g\n", (prez[i] > 0 && z[i] < 0) ? "-\\-" : "-/-", i, time);
-				}
-				if (stepEvent) {
-					INFO("Step event\n");
-					nStepEvents++;
-					if (loggingOn) printf("step event at t=%.16g\n", time);
-				}
-				INFO("Event handled\n");
-
-				// event iteration in one step, ignoring intermediate results
-				eventInfo.newDiscreteStatesNeeded = fmi2True;
-				eventInfo.terminateSimulation = fmi2False;
-				while (eventInfo.newDiscreteStatesNeeded && !eventInfo.terminateSimulation) {
-					// update discrete states
-					fmi2Flag = fmu->newDiscreteStates(c, &eventInfo);
-					if (fmi2Flag > fmi2Warning) return error("could not set a new discrete state");
-
-					// check for change of value of states
-					if (eventInfo.valuesOfContinuousStatesChanged && loggingOn) {
-						printf("continuous state values changed at t=%.16g\n", time);
-					}
-					if (eventInfo.nominalsOfContinuousStatesChanged && loggingOn) {
-						printf("nominals of continuous state changed  at t=%.16g\n", time);
-					}
-				}
-				if (eventInfo.terminateSimulation) {
-					printf("model requested termination at t=%.16g\n", time);
-					break; // success
-				}
-
-				// enter Continuous-Time Mode
-				fmi2Flag = fmu->enterContinuousTimeMode(c);
-				if (fmi2Flag > fmi2Warning) return error("could not enter continuous time mode");
-			} // if event
-			for (i = 0; i < nVariables-1; i++) {
-				if (variables[i].type == REAL) {
-					fmu->getReal(c, &variables[i].valueReference, 1, &output[i + 1][nSteps]);
-				} else if (variables[i].type == INTEGER) {
-					fmi2Integer intValue;
-					fmu->getInteger(c, &variables[i].valueReference, 1, &intValue);
-					output[i + 1][nSteps] = (double)intValue;
-				}
-			}
-			nSteps++;
-		} // while
-	}
-	// cleanup
-	fmi2Flag = fmu->terminate(c);
-	if (fmi2Flag > fmi2Warning) return error("could not terminate model");
-	
-	fmu->freeInstance(c);
-	if (x != NULL) free(x);
-    if (xdot != NULL) free(xdot);
-    if (z != NULL) free(z);
-    if (prez != NULL) free(prez);
-
-	//print simulation summary
-    printf("Simulation from %g to %g terminated successful\n", tStart, tEnd);
-    printf("  steps ............ %d\n", nSteps);
-    printf("  fixed step size .. %g\n", h);
-    printf("  time events ...... %d\n", nTimeEvents);
-    printf("  state events ..... %d\n", nStateEvents);
-    printf("  step events ...... %d\n", nStepEvents);
-
-	//print the output
-	for (i = 0; i < nVariables - 1; i++) {
-		printf("%s: ", variables[i+1].name);
-		for (int j = 0; j < nSteps; j++) {
-			printf("%f ", output[i+1][j]);
-		}
-		printf("\n");
-	}
-	
-	//free the output
-	for (i = 0; i < nVariables + 1; i++) {
-		free(output[i]);
-	}
-	free(output);
-
-    return 1; // success
-};
-
 /**
  * @brief Initializes the FMU simulation and returns a simulation state structure.
  *
  * @param fmu Pointer to the FMU structure
  * @param tEnd End time for simulation
  * @param h Step size
- * @param loggingOn Flag for logging
- * @param nCategories Number of logging categories
- * @param categories Array of logging category strings
  * @return SimulationState* Pointer to initialized simulation state, NULL if error
  */
-SimulationState* initializeSimulation(FMU *fmu, double tEnd, double h, 
-                                    fmi2Boolean loggingOn, int nCategories, 
-                                    char **categories) {
+SimulationState* initializeSimulation(FMU *fmu, double tEnd, double h) {
     SimulationState *state = (SimulationState*)calloc(1, sizeof(SimulationState));
     if (!state) return NULL;
 
@@ -460,14 +151,13 @@ SimulationState* initializeSimulation(FMU *fmu, double tEnd, double h,
     state->nTimeEvents = 0;
     state->nStateEvents = 0;
     state->nStepEvents = 0;
-    state->loggingOn = loggingOn;
 
     // Setup callback functions
     fmi2CallbackFunctions callbacks = {fmuLogger, calloc, free, NULL, fmu};
 
     // Instantiate the FMU
     state->component = fmu->instantiate("BouncingBall", fmi2ModelExchange, 
-                                      fmuGUID, NULL, &callbacks, fmi2False, loggingOn);
+                                      fmuGUID, NULL, &callbacks, fmi2False, fmi2False);
     if (!state->component) {
         free(state);
         return NULL;
@@ -551,7 +241,7 @@ SimulationState* initializeSimulation(FMU *fmu, double tEnd, double h,
     state->nVariables = get_variable_count();
     state->output = (double**)calloc(state->nVariables + 1, sizeof(double*));
     for (int i = 0; i < state->nVariables + 1; i++) {
-        state->output[i] = (double*)calloc((int)tEnd/h + 10, sizeof(double));
+        state->output[i] = (double*)calloc((size_t)(tEnd/h + 10), sizeof(double));
     }
 
     // Initialize first output values
@@ -736,10 +426,10 @@ void cleanupSimulation(FMU *fmu, SimulationState *state) {
     printf("  step events ...... %d\n", state->nStepEvents);
 
     // Print the output
-    for (int i = 0; i < state->nVariables-1; i++) {
-        printf("%s: ", state->variables[i+1].name);
-        for (int j = 0; j < state->nSteps; j++) {
-            printf("%f ", state->output[i+1][j]);
+    for (int j = 0; j < state->nSteps; j++) {
+        printf("Step %d: ", j);
+        for (int i = 1; i < state->nVariables-1; i++) {
+            printf("%s=%f ", state->variables[i+1].name, state->output[i+1][j]);
         }
         printf("\n");
     }
@@ -760,65 +450,39 @@ void cleanupSimulation(FMU *fmu, SimulationState *state) {
  *
  * @return Returns 0 upon successful completion.
  */
-// int main(int argc, char *argv[]) {
-// 	double tEnd = 3;
-// 	double h = 0.01;
-// 	int loggingOn;
-// 	int nCategories=4+1; //TODO: This should come from a struct that is created by the makefile and read from the xml file
-// 	char **logCategories;
-
-// 	loadFunctions(&fmu);
-
-// 	simulate(&fmu, tEnd, h, loggingOn, nCategories, logCategories);
-
-// 	return 0;
-// }
 int main(int argc, char *argv[]) {
 	// Liste des paramètres à récupérer
 	// tStart, tEnd, h, True/False
 
-	if (argc < 5) {
-		printf("Usage: %s tStart tEnd h Step/Whole\n", argv[0]);
+	if (argc < 4) {
+		printf("Usage: %s tStart tEnd h\n", argv[0]);
 		return -1;
 	}
-
 
     // Simulation parameters
     double tEnd = atof(argv[2]);
     double h = atof(argv[3]);
-    fmi2Boolean loggingOn = fmi2False;
-    int nCategories = 2; // TODO: This should come from a struct created by the makefile and read from the xml file
-    char **logCategories = NULL;
 
-	if (strcmp(argv[4], "Step") == 0) {
-    // Load FMU functions
-		loadFunctions(&fmu);
+	loadFunctions(&fmu);
 
-		// Initialize the simulation
-		SimulationState *state = initializeSimulation(&fmu, tEnd, h, loggingOn, nCategories, logCategories);
-		if (!state) {
-			printf("Failed to initialize simulation\n");
-			return -1;
-		}
-
-		// Run the simulation step by step
-		while (state->time < state->tEnd && !state->eventInfo.terminateSimulation) {
-			fmi2Status status = simulationDoStep(&fmu, state);
-			if (status > fmi2Warning) {
-				printf("Simulation step failed at time %g\n", state->time);
-				break;
-			}
-		}
-
-		// Cleanup and free resources
-		cleanupSimulation(&fmu, state);
-	} else if (strcmp(argv[4], "Whole") == 0) {
-		loadFunctions(&fmu);
-		simulate(&fmu, tEnd, h, loggingOn, nCategories, logCategories);
-	} else {
-		printf("Invalid simulation mode: %s\nCorrect mode are Step/Whole", argv[4]);
+	// Initialize the simulation
+	SimulationState *state = initializeSimulation(&fmu, tEnd, h);
+	if (!state) {
+		printf("Failed to initialize simulation\n");
 		return -1;
 	}
+
+	// Run the simulation step by step
+	while (state->time < state->tEnd && !state->eventInfo.terminateSimulation) {
+		fmi2Status status = simulationDoStep(&fmu, state);
+		if (status > fmi2Warning) {
+			printf("Simulation step failed at time %g\n", state->time);
+			break;
+		}
+	}
+
+	// Cleanup and free resources
+	cleanupSimulation(&fmu, state);
 
     return 0;
 }

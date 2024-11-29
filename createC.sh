@@ -11,7 +11,7 @@ typedef enum { INTEGER, REAL } VarType;
 
 typedef struct {
     char *name;
-    int valueReference;
+    unsigned int valueReference;
     char *description;
     VarType type;
     union {
@@ -94,7 +94,7 @@ while IFS= read -r line; do
         ScalarVariable var;
         char *name = "$name";
         char *description = "$description";
-        int valueReference = $valueReference;
+        const unsigned int valueReference = $valueReference;
         VarType type = $type_enum;
         ${type_var} start = ${start_val};
         ${type_var} min = ${min_val};
@@ -115,7 +115,7 @@ echo "    {" >> "$output_file"
 echo "        ScalarVariable var;" >> "$output_file"
 echo "        char *name = \"Unknown\";" >> "$output_file"
 echo "        char *description = \"Unknown\";" >> "$output_file"
-echo "        int valueReference = 0;" >> "$output_file"
+echo "        const unsigned int valueReference = 0;" >> "$output_file"
 echo "        VarType type = REAL;" >> "$output_file"
 echo "        double start = 0.0;" >> "$output_file"
 echo "        double min = 0.0;" >> "$output_file"
@@ -136,6 +136,9 @@ echo "}" >> "$output_file"
 echo "int get_variable_count() {" >> "$output_file"
 echo "    return $counter;" >> "$output_file"
 echo "}" >> "$output_file"
+
+#Constant number of variables
+echo "#define NVARIABLES $counter" >> "$output_file"
 
 #End of the file
 
