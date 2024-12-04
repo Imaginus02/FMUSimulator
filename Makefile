@@ -1,6 +1,6 @@
 # Compilateur et options
 CC = gcc
-CFLAGS = -Iheaders -Isources -Wall -g -DFMI_VERSION=2 -DModelFMI_COSIMULATION=0 -DMODEL_IDENTIFIER=BouncingBall -DFMI2_OVERRIDE_FUNCTION_PREFIX="" -fno-common #-DDEBUG
+CFLAGS = -Iheaders -Isources -Wall -g -DFMI_VERSION=2 -DModelFMI_COSIMULATION=0  -DFMI2_OVERRIDE_FUNCTION_PREFIX="" -fno-common #-DDEBUG #-DMODEL_IDENTIFIER=BouncingBall
 
 # Dossiers de sources et d'en-têtes
 SRCDIR = fmu/sources

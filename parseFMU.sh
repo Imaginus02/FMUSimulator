@@ -16,26 +16,28 @@ EOT
 
 # On doit commencer par parser le tag TypeDefinitions pour créer une enum pour chaque type
 #TODO: changer pour une variable qui stocke la string puis qui la print pour éviter le retour à la ligne
-cat <<EOT >> "$output_file"
+lines=$(xmllint --xpath "//SimpleType" ./fmu/modelDescription.xml --format | grep -oP '<.*?>')
+if [ -n "$lines" ]; then
+    cat <<EOT >> "$output_file"
 typedef enum { 
 EOT
-lines=$(xmllint --xpath "//SimpleType" ./fmu/modelDescription.xml --format | grep -oP '<.*?>')
-first="yes"
-while IFS= read -r line; do
-    # Parse each attribute from the line
-    name=$(echo "$line" | grep -oP 'name="\K[^"]*')
-    if [ -n "$name" ]; then
-        if [ "$first" = "yes" ]; then
-            echo -n "$name" >> "$output_file"
-            first="no"
-        else
-            echo -n ", $name" >> "$output_file"
+    first="yes"
+    while IFS= read -r line; do
+        # Parse each attribute from the line
+        name=$(echo "$line" | grep -oP 'name="\K[^"]*')
+        if [ -n "$name" ]; then
+            if [ "$first" = "yes" ]; then
+                echo -n "$name" >> "$output_file"
+                first="no"
+            else
+                echo -n ", $name" >> "$output_file"
+            fi
         fi
-    fi
-done <<< "$lines"
-cat <<EOT >> "$output_file"
+    done <<< "$lines"
+    cat <<EOT >> "$output_file"
 } TypeDefinitions;
 EOT
+fi
 
 
 
@@ -121,7 +123,7 @@ lines=$(xmllint --xpath "//ScalarVariable" ./fmu/modelDescription.xml --format |
 # On fait une boucle for pour parser chaque ligne
 #echo "$lines"
 
-counter=1
+counter=0
 temp_output=""
 numberOfContinuousStates=0
 
@@ -225,18 +227,6 @@ done <<< "$lines"
 
 
 echo "    (*variables) = (ScalarVariable*)calloc($counter, sizeof(ScalarVariable));" >> "$output_file"
-echo "    {" >> "$output_file"
-echo "        ScalarVariable var;" >> "$output_file"
-echo "        char *name = \"Unknown\";" >> "$output_file"
-echo "        char *description = \"Unknown\";" >> "$output_file"
-echo "        const unsigned int valueReference = 0;" >> "$output_file"
-echo "        VarType type = REAL;" >> "$output_file"
-echo "        double start = 0.0;" >> "$output_file"
-echo "        double min = 0.0;" >> "$output_file"
-echo "        double max = 0.0;" >> "$output_file"
-echo "        initialize(&var, name, valueReference, description, type, &start, &min, &max);" >> "$output_file"
-echo "        (*variables)[0] = var;" >> "$output_file"
-echo "    }" >> "$output_file"
 
 # Append the generated code to the output file
 echo -e "$temp_output" >> "$output_file"

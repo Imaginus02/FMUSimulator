@@ -258,21 +258,22 @@ SimulationState* initializeSimulation(FMU *fmu, double tStart, double tEnd, doub
     // Initialize variables and output array
     get_variable_list(&state->variables);
     state->nVariables = get_variable_count();
-    state->output = (double**)calloc(state->nVariables + 1, sizeof(double*));
-    for (int i = 0; i < state->nVariables + 1; i++) {
+    state->output = (double**)calloc(state->nVariables, sizeof(double*));
+    for (int i = 0; i < state->nVariables; i++) {
         state->output[i] = (double*)calloc((size_t)(tEnd/h + 10), sizeof(double));
     }
 
     // Initialize first output values
-    for (int i = 0; i < state->nVariables - 1; i++) {
+    for (int i = 0; i < state->nVariables; i++) {
         if (state->variables[i].type == REAL) {
             fmu->getReal(state->component, &state->variables[i].valueReference, 
-                        1, &state->output[i + 1][0]);
+                        1, &state->output[i][0]);
         } else if (state->variables[i].type == INTEGER) {
             fmi2Integer intValue;
+            INFO("Trying to retrieve variable %s\n as integer", state->variables[i].name);
             fmu->getInteger(state->component, &state->variables[i].valueReference, 
                            1, &intValue);
-            state->output[i + 1][0] = (double)intValue;
+            state->output[i][0] = (double)intValue;
         }
     }
     return state;
@@ -388,17 +389,17 @@ fmi2Status simulationDoStep(FMU *fmu, SimulationState *state) {
     }
 
     // Update outputs
-    for (int i = 0; i < state->nVariables - 1; i++) {
+    for (int i = 0; i < state->nVariables; i++) {
         if (state->variables[i].type == REAL) {
             fmu->getReal(state->component, &state->variables[i].valueReference, 
-                        1, &state->output[i + 1][state->nSteps]);
+                        1, &state->output[i][state->nSteps]);
 			INFO("DEBUG:   %s (ref %d): %f\n", state->variables[i].name, 
-                   state->variables[i].valueReference, state->output[i + 1][state->nSteps]);
+                   state->variables[i].valueReference, state->output[i][state->nSteps]);
         } else if (state->variables[i].type == INTEGER) {
             fmi2Integer intValue;
             fmu->getInteger(state->component, &state->variables[i].valueReference, 
                            1, &intValue);
-            state->output[i + 1][state->nSteps] = (double)intValue;
+            state->output[i][state->nSteps] = (double)intValue;
         }
     }
 
@@ -408,7 +409,7 @@ fmi2Status simulationDoStep(FMU *fmu, SimulationState *state) {
 
 void printOutput(SimulationState *state) {
     // Print simulation summary
-    INFO("Simulation from %g to %g terminated successfully\n", state->, state->tEnd);
+    INFO("Simulation from %g to %g terminated successfully\n", state->tStart, state->tEnd);
     INFO("  steps ............ %d\n", state->nSteps);
     INFO("  fixed step size .. %g\n", state->h);
     INFO("  time events ...... %d\n", state->nTimeEvents);
@@ -418,8 +419,8 @@ void printOutput(SimulationState *state) {
     // Print the output
     for (int j = 0; j < state->nSteps; j++) {
         printf("Step %d: ", j);
-        for (int i = 1; i < state->nVariables-1; i++) {
-            printf("%s=%f ", state->variables[i+1].name, state->output[i+1][j]);
+        for (int i = 0; i < state->nVariables; i++) {
+            printf("%s=%f ", state->variables[i].name, state->output[i][j]);
         }
         printf("\n");
     }
