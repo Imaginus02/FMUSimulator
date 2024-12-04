@@ -15,11 +15,22 @@ OBJECTS = main.o all.o
 TARGET = fmusim
 
 # Règles pour compiler le projet
-all: $(TARGET)
+all: prepare $(TARGET)
+
+prepare:
+	@fmu_files=$$(find . -maxdepth 1 -name '*.fmu'); \
+	if [ $$(echo $$fmu_files | wc -w) -ne 1 ]; then \
+		echo "Error: There should be exactly one .fmu file in the directory."; \
+		exit 1; \
+	fi; \
+	unzip -o $$fmu_files -d fmu/
+	./parseFMU.sh
 
 $(TARGET): $(SOURCES) $(HEADERS)
 	$(CC) $(CFLAGS) $(SOURCES) -o $(TARGET) -ldl
 
-# Nettoyage des fichiers objets et de l'exécutable
+# Nettoyage des fichiers objets, de l'exécutable, du répertoire fmu/ et du fichier modelDescription.c
 clean:
 	rm -f $(TARGET) *.o
+	rm -rf fmu/
+	rm -f modelDescription.c

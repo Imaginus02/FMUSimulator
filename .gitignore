@@ -1,5 +1,6 @@
 fmu/
 fmusim
-output.c
+modelDescription.c
 .vscode/
 BouncingBall.fmu
+tests/out.*

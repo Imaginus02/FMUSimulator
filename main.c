@@ -13,7 +13,7 @@
 
 // Other necessary files
 #include "fmi2.c"
-#include "output.c"
+#include "modelDescription.c"
 
 
 //TODO: Make those values read by the Makefile

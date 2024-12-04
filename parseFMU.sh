@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # On va parser tout le fichier xml et le mettre dans un fichier C.
-output_file="output.c"
+output_file="modelDescription.c"
 
 # Le début du fichier C
 cat <<EOT > "$output_file"

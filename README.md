@@ -4,10 +4,11 @@ Ce projet a pour objectif de compiler et exécuter une simulation à partir d'un
 
 ## Structure du Projet
 
-- `fmu/`: Dossier contenant les sources décompressées de l'archive FMU.
 - `headers/`: Dossier contenant les fichiers d'en-tête nécessaires.
+- `tests/`: Dossier contenant des scripts Python pour afficher les valeurs.
 - `main.c`: Fichier source principal pour la simulation.
 - `Makefile`: Fichier pour automatiser la compilation et l'exécution.
+`parseFMU.sh`: Script pour analyser et extraire les informations nécessaires de l'archive FMU.
 
 ## Prérequis
 
@@ -22,24 +23,24 @@ Pour compiler le projet, exécutez la commande suivante dans le terminal :
 make
 ```
 
-Cette commande utilise le `Makefile` pour compiler les sources et générer l'exécutable `fmusim`.
+Cette commande utilise le `Makefile` pour extraire les fichiers sources de l'archive .fmu, crée un fichier C en parsant `modelDescription.xml` et compile les sources pour générer l'exécutable `fmusim`.
 
 ## Exécution
 
 Une fois la compilation terminée, vous pouvez lancer la simulation avec l'exécutable généré :
 
 ```sh
-./fmusim
+./fmusim StartTime EndTime StepSize
 ```
 
 Pour directement afficher un graphique :
 ```sh
-./fmusim 1 4 0.01 Step > ./tests/out.txt | python3 ./tests/plot.py
+./fmusim StartTime EndTime StepSize > ./tests/out.txt | python3 ./tests/plot.py
 ```
 
 ## Nettoyage
 
-Pour nettoyer les fichiers objets et l'exécutable généré, utilisez la commande :
+Pour nettoyer les fichiers générés, utilisez la commande :
 
 ```sh
 make clean
@@ -47,14 +48,14 @@ make clean
 
 ## Configuration
 
-Les configurations spécifiques au projet, telles que les GUID et les options de débogage, peuvent être modifiées dans le fichier `main.c` et le `Makefile`.
+Les configurations spécifiques au projet, telles que les options de débogage, peuvent être modifiées dans le `Makefile`.
 
 ## Auteurs
 
 - Tom REYNAUD
 
 ## Base project
-Base on the [fmuSDK simulator](https://github.com/qtronic/fmusdk) that used the dll files in order to setup the simulation
+Basé sur le projet [fmuSDK](https://github.com/qtronic/fmusdk) qui utilise les fichiers dll pour récupérer les fonctions nécessaire à la simulation
 
 ## License
 
