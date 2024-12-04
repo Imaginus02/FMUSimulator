@@ -34,3 +34,4 @@ clean:
 	rm -f $(TARGET) *.o
 	rm -rf fmu/
 	rm -f modelDescription.c
+	rm -f tests/out.*

@@ -1,6 +1,7 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <stdarg.h>
+#include <string.h>
 
 // Headers from the FMI standard
 #include "headers/fmi2TypesPlatform.h"
@@ -426,6 +427,29 @@ void printOutput(SimulationState *state) {
     }
 }
 
+void printCsv(SimulationState *state, char sep) {
+    // Print headers
+    printf("step%c", sep);
+    for (int i = 0; i < state->nVariables; i++) {
+        printf("%s", state->variables[i].name);
+        if (i < state->nVariables - 1) {
+            printf("%c", sep);
+        }
+    }
+    printf("\n");
+    
+    // Print the output
+    for (int j = 0; j < state->nSteps; j++) {
+        printf("%d%c", j, sep);
+        for (int i = 0; i < state->nVariables; i++) {
+            printf("%f", state->output[i][j]);
+            if (i < state->nVariables - 1) {
+                printf("%c", sep);
+            }
+        }
+        printf("\n");
+    }
+}
 
 /**
  * @brief Main function to initialize and run the simulation.
@@ -439,18 +463,47 @@ void printOutput(SimulationState *state) {
  * @return Returns 0 upon successful completion.
  */
 int main(int argc, char *argv[]) {
-	// Liste des paramètres à récupérer
-	// tStart, tEnd, h, True/False
 
-	if (argc < 4) {
-		printf("Usage: %s tStart tEnd h\n", argv[0]);
-		return -1;
-	}
+    double tStart;
+    double tEnd;
+    double h;
+    int csv = 0;
+    char sep = ',';
+
+	// Liste des paramètres à récupérer
+	// tStart, tEnd, h, --csv, sep
+
+	// Validate minimum number of arguments
+    if (argc < 4) {
+        printf("Usage: %s tStart tEnd h [--csv separator]\n", argv[0]);
+        return -1;
+    }
+
+    // Handle optional CSV arguments
+    if (argc >= 5) {
+        if (strcmp(argv[4], "--csv") == 0) {
+            csv = 1;
+            // Check if a separator is provided
+            if (argc == 6) {
+                sep = argv[5][0];  // Use the first character of the separator
+            }
+        } else {
+            // Invalid argument after the required three
+            printf("Usage: %s tStart tEnd h [--csv separator]\n", argv[0]);
+            return -1;
+        }
+    }
+
+    INFO("tStart: %s, tEnd: %s, h: %s\n", argv[1], argv[2], argv[3]);
+    if (csv) {
+        INFO("CSV Mode enabled with separator: '%c'\n", sep);
+    }
+    
 
     // Simulation parameters
-    double tStart = atof(argv[1]);
-    double tEnd = atof(argv[2]);
-    double h = atof(argv[3]);
+    tStart = atof(argv[1]);
+    tEnd = atof(argv[2]);
+    h = atof(argv[3]);
 
 	loadFunctions(&fmu);
 
@@ -471,7 +524,11 @@ int main(int argc, char *argv[]) {
 	}
 
     // Print the output
-    printOutput(state);
+    if (csv) {
+        printCsv(state, sep);
+    } else {
+        printOutput(state);
+    }
 
 	// Cleanup and free resources
 	cleanupSimulation(&fmu, state);

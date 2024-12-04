@@ -1,46 +1,36 @@
+import csv
 import matplotlib.pyplot as plt
+import os
 
-# Read the data from the file
-with open('/mnt/d/Seafile/ProjetIndus_Reynaud/test_simulator/tests/out.txt', 'r') as file:
-	lines = file.readlines()
+file_path = os.path.join(os.path.dirname(__file__), 'out.csv')
+with open(file_path, 'r') as file:
+	reader = csv.reader(file)
+	header = next(reader)
+	data = list(reader)
 
-# Initialize lists to store time, h, and v values
-time_values = []
-h_values = []
-v_values = []
+# Extract the column names
+columns = {name: [] for name in header}
 
-# Extract time, h, and v values from the file
-for line in lines:
-	if line.startswith('  fixed step size'):
-		fixed_step_size = float(line.split(' ')[-1])
-		print(f"Detected step size: {fixed_step_size}")
-	if line.startswith('time:'):
-		time_values.append([float(value) for value in line.split(' ')[1:-1]])
-	elif line.startswith('h:'):
-		h_values.append([float(value) for value in line.split(' ')[1:-1]])
-	elif line.startswith('v:'):
-		v_values.append([float(value) for value in line.split(' ')[1:-1]])
+# Populate the columns with data
+for row in data:
+	for name, value in zip(header, row):
+		columns[name].append(float(value))
 
-if sum(time_values[0]) != sum([fixed_step_size*i for i in range(len(h_values))]):
-	print(f"Time values are not consistent with the fixed step size: {fixed_step_size}, Recalculating time values")
-	time_values = [[fixed_step_size*i for i in range(len(h_values[0]))]]
+# Extract the first column as the x-axis
+x_values = columns[header[0]]
 
-# Create subplots
-fig, (ax1, ax2) = plt.subplots(2, 1, sharex=True)
-# Plot h vs time
-for t, h in zip(time_values, h_values):
-	ax1.plot(t, h)
-ax1.set_ylabel('h')
-ax1.set_title('h vs Time')
-ax1.grid(True)
+# Create subplots for each variable against the first column, excluding the first column itself
+fig, axes = plt.subplots(len(header) - 1, 1, sharex=True, figsize=(10, 8))
 
-# Plot v vs time
-for t, v in zip(time_values, v_values):
-	ax2.plot(t, v)
-ax2.set_xlabel('Time')
-ax2.set_ylabel('v')
-ax2.set_title('v vs Time')
-ax2.grid(True)
+# Plot each variable against the first column, excluding the first column itself
+for i, name in enumerate(header[1:]):
+	axes[i].plot(x_values, columns[name])
+	axes[i].set_ylabel(name)
+	axes[i].set_title(f'{name} vs {header[0]}')
+	axes[i].grid(True)
 
-# Save the plot
-plt.savefig('/mnt/d/Seafile/ProjetIndus_Reynaud/test_simulator/tests/out.png')
+axes[-1].set_xlabel(header[0])
+
+# Adjust layout and save the plot
+plt.tight_layout()
+plt.savefig(os.path.join(os.path.dirname(__file__), 'out.png'))

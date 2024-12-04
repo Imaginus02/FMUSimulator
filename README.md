@@ -1,6 +1,6 @@
 # Projet de Simulation FMU
 
-Ce projet a pour objectif de compiler et exécuter une simulation à partir d'une archive FMU décompressée, nommée "fmu", dont les sources sous forme de fichiers c sont présentes.
+Ce projet a pour objectif de compiler et exécuter une simulation à partir d'une archive FMU dont les sources sous forme de fichiers c sont présentes.
 
 ## Structure du Projet
 
@@ -36,7 +36,7 @@ Une fois la compilation terminée, vous pouvez lancer la simulation avec l'exéc
 
 Pour directement afficher un graphique :
 ```sh
-./fmusim StartTime EndTime StepSize > ./tests/out.txt | python3 ./tests/plot.py
+./fmusim StartTime EndTime StepSize --csv > ./tests/out.txt | python3 ./tests/plot.py
 ```
 
 ## Nettoyage
