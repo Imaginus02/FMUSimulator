@@ -16,14 +16,7 @@
 #include "modelDescription.c"
 
 
-//TODO: Make those values read by the Makefile
-
-#define FMI_VERSION 2
-
-// #ifndef fmuGUID
-// #define fmuGUID "{1AE5E10D-9521-4DE3-80B9-D0EAAA7D5AF1}"
-// #endif
-
+// If DEBUG is defined, INFO will print messages to the console
 #ifndef DEBUG
 #define INFO(message, ...)
 #else
@@ -34,9 +27,10 @@
 } while (0)
 #endif
 
-
+// Minimum macro
 #define min(a,b) ((a)>(b) ? (b) : (a))
 
+// Structure to hold the simulation state
 typedef struct {
     fmi2Component component;
     int nx;                          // number of state variables
@@ -47,6 +41,7 @@ typedef struct {
     double *prez;                    // previous state event indicators
     double time;                     // current simulation time
     double h;                        // step size
+    double tStart;                   // start time
     double tEnd;                     // end time
     fmi2EventInfo eventInfo;         // event info
     ScalarVariable *variables;       // model variables
@@ -58,7 +53,7 @@ typedef struct {
     int nStepEvents;                 // number of step events
 } SimulationState;
 
-
+// Initialize the FMU structure, which contains function pointers for FMI operations
 FMU fmu;
 
 /**
@@ -133,6 +128,40 @@ int error(const char *message) {
 }
 
 /**
+ * @brief Frees all resources associated with the simulation state.
+ *
+ * @param fmu Pointer to the FMU structure
+ * @param state Pointer to the simulation state to be freed
+ */
+void cleanupSimulation(FMU *fmu, SimulationState *state) {
+    if (!state) return;
+
+    // Terminate the FMU
+    if (state->component) {
+        fmu->terminate(state->component);
+        fmu->freeInstance(state->component);
+    }
+
+    // Free state variables
+    if (state->x) free(state->x);
+    if (state->xdot) free(state->xdot);
+    if (state->z) free(state->z);
+    if (state->prez) free(state->prez);
+
+    // Free output array
+    if (state->output) {
+        for (int i = 0; i < state->nVariables + 1; i++) {
+            if (state->output[i]) free(state->output[i]);
+        }
+        free(state->output);
+    }
+
+    // Free the state structure itself
+    free(state);
+}
+
+
+/**
  * @brief Initializes the FMU simulation and returns a simulation state structure.
  *
  * @param fmu Pointer to the FMU structure
@@ -140,12 +169,13 @@ int error(const char *message) {
  * @param h Step size
  * @return SimulationState* Pointer to initialized simulation state, NULL if error
  */
-SimulationState* initializeSimulation(FMU *fmu, double tEnd, double h) {
+SimulationState* initializeSimulation(FMU *fmu, double tStart, double tEnd, double h) {
     SimulationState *state = (SimulationState*)calloc(1, sizeof(SimulationState));
     if (!state) return NULL;
 
     state->time = 0;
     state->h = h;
+    state->tStart = tStart;
     state->tEnd = tEnd;
     state->nSteps = 0;
     state->nTimeEvents = 0;
@@ -159,28 +189,12 @@ SimulationState* initializeSimulation(FMU *fmu, double tEnd, double h) {
     state->component = fmu->instantiate(model.modelName, fmi2ModelExchange, 
                                       model.guid, NULL, &callbacks, fmi2False, fmi2False);
     if (!state->component) {
-        free(state);
+        cleanupSimulation(fmu,state);
         return NULL;
     }
 
-// Get state dimensions
-// #if defined(getNumberOfContinuousStates)
-// #if defined(getNumberOfEventIndicators)
-//     if (getNumberOfContinuousStates != NULL && getNumberOfEventIndicators != NULL) {
-//         INFO("Retrieved NumberOfContinuouseStates and NumberOfEventIndicators using functions")
-//         state->nx = getNumberOfContinuousStates(state->component);
-//         state->nz = getNumberOfEventIndicators(state->component);
-//     }
-// #endif
-// #endif
-// printf("ContinuousStates: %d\nEventIndicators: %d",state->nx, state->nz);
-// #ifndef getNumberOfContinuousStates
     state->nx = model.numberOfContinuousStates;
-// #endif
-
-// #ifndef getNumberOfEventIndicators
     state->nz = model.numberOfEventIndicators;
-// #endif
 
     // Allocate memory for states and indicators
     state->x = (double*)calloc(state->nx, sizeof(double));
@@ -193,12 +207,7 @@ SimulationState* initializeSimulation(FMU *fmu, double tEnd, double h) {
     if ((!state->x || !state->xdot) || 
         (state->nz > 0 && (!state->z || !state->prez))) {
         // Cleanup and return on allocation failure
-        if (state->x) free(state->x);
-        if (state->xdot) free(state->xdot);
-        if (state->z) free(state->z);
-        if (state->prez) free(state->prez);
-        fmu->freeInstance(state->component);
-        free(state);
+        cleanupSimulation(fmu,state);
         return NULL;
     }
 
@@ -206,26 +215,23 @@ SimulationState* initializeSimulation(FMU *fmu, double tEnd, double h) {
     fmi2Boolean toleranceDefined = fmi2False;
     fmi2Real tolerance = 0;
     fmi2Status fmi2Flag = fmu->setupExperiment(state->component, toleranceDefined, 
-                                              tolerance, state->time, fmi2True, tEnd);
+                                              tolerance, state->tStart, fmi2True, state->tEnd);
     if (fmi2Flag > fmi2Warning) {
         // Cleanup and return on setup failure
-        fmu->freeInstance(state->component);
-        free(state);
+        cleanupSimulation(fmu,state);
         return NULL;
     }
 
     // Initialize the FMU
     fmi2Flag = fmu->enterInitializationMode(state->component);
     if (fmi2Flag > fmi2Warning) {
-        fmu->freeInstance(state->component);
-        free(state);
+        cleanupSimulation(fmu,state);
         return NULL;
     }
 
     fmi2Flag = fmu->exitInitializationMode(state->component);
     if (fmi2Flag > fmi2Warning) {
-        fmu->freeInstance(state->component);
-        free(state);
+        cleanupSimulation(fmu,state);
         return NULL;
     }
 
@@ -236,8 +242,7 @@ SimulationState* initializeSimulation(FMU *fmu, double tEnd, double h) {
            !state->eventInfo.terminateSimulation) {
         fmi2Flag = fmu->newDiscreteStates(state->component, &state->eventInfo);
         if (fmi2Flag > fmi2Warning) {
-            fmu->freeInstance(state->component);
-            free(state);
+            cleanupSimulation(fmu,state);
             return NULL;
         }
     }
@@ -245,8 +250,7 @@ SimulationState* initializeSimulation(FMU *fmu, double tEnd, double h) {
     if (!state->eventInfo.terminateSimulation) {
         fmi2Flag = fmu->enterContinuousTimeMode(state->component);
         if (fmi2Flag > fmi2Warning) {
-            fmu->freeInstance(state->component);
-            free(state);
+            cleanupSimulation(fmu,state);
             return NULL;
         }
     }
@@ -271,7 +275,6 @@ SimulationState* initializeSimulation(FMU *fmu, double tEnd, double h) {
             state->output[i + 1][0] = (double)intValue;
         }
     }
-
     return state;
 }
 
@@ -403,42 +406,14 @@ fmi2Status simulationDoStep(FMU *fmu, SimulationState *state) {
     return fmi2OK;
 }
 
-/**
- * @brief Frees all resources associated with the simulation state.
- *
- * @param fmu Pointer to the FMU structure
- * @param state Pointer to the simulation state to be freed
- */
-void cleanupSimulation(FMU *fmu, SimulationState *state) {
-    if (!state) return;
-
-    // Terminate the FMU
-    if (state->component) {
-        fmu->terminate(state->component);
-        fmu->freeInstance(state->component);
-    }
-
-    // Free state variables
-    if (state->x) free(state->x);
-    if (state->xdot) free(state->xdot);
-    if (state->z) free(state->z);
-    if (state->prez) free(state->prez);
-
-    // Free output array
-    if (state->output) {
-        for (int i = 0; i < state->nVariables + 1; i++) {
-            if (state->output[i]) free(state->output[i]);
-        }
-        free(state->output);
-    }
-
+void printOutput(SimulationState *state) {
     // Print simulation summary
-    printf("Simulation from %g to %g terminated successfully\n", 0.0, state->tEnd);
-    printf("  steps ............ %d\n", state->nSteps);
-    printf("  fixed step size .. %g\n", state->h);
-    printf("  time events ...... %d\n", state->nTimeEvents);
-    printf("  state events ..... %d\n", state->nStateEvents);
-    printf("  step events ...... %d\n", state->nStepEvents);
+    INFO("Simulation from %g to %g terminated successfully\n", state->, state->tEnd);
+    INFO("  steps ............ %d\n", state->nSteps);
+    INFO("  fixed step size .. %g\n", state->h);
+    INFO("  time events ...... %d\n", state->nTimeEvents);
+    INFO("  state events ..... %d\n", state->nStateEvents);
+    INFO("  step events ...... %d\n", state->nStepEvents);
 
     // Print the output
     for (int j = 0; j < state->nSteps; j++) {
@@ -448,9 +423,6 @@ void cleanupSimulation(FMU *fmu, SimulationState *state) {
         }
         printf("\n");
     }
-
-    // Free the state structure itself
-    free(state);
 }
 
 
@@ -475,13 +447,14 @@ int main(int argc, char *argv[]) {
 	}
 
     // Simulation parameters
+    double tStart = atof(argv[1]);
     double tEnd = atof(argv[2]);
     double h = atof(argv[3]);
 
 	loadFunctions(&fmu);
 
 	// Initialize the simulation
-	SimulationState *state = initializeSimulation(&fmu, tEnd, h);
+	SimulationState *state = initializeSimulation(&fmu, tStart, tEnd, h);
 	if (!state) {
 		printf("Failed to initialize simulation\n");
 		return -1;
@@ -495,6 +468,9 @@ int main(int argc, char *argv[]) {
 			break;
 		}
 	}
+
+    // Print the output
+    printOutput(state);
 
 	// Cleanup and free resources
 	cleanupSimulation(&fmu, state);

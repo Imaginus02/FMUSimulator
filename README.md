@@ -7,8 +7,9 @@ Ce projet a pour objectif de compiler et exécuter une simulation à partir d'un
 - `headers/`: Dossier contenant les fichiers d'en-tête nécessaires.
 - `tests/`: Dossier contenant des scripts Python pour afficher les valeurs.
 - `main.c`: Fichier source principal pour la simulation.
+- `fmi2.c`: Fichier source liant les fonctions FMI 2.0 nécessaires à la simulation au reste du code c
 - `Makefile`: Fichier pour automatiser la compilation et l'exécution.
-`parseFMU.sh`: Script pour analyser et extraire les informations nécessaires de l'archive FMU.
+- `parseFMU.sh`: Script pour analyser et extraire les informations nécessaires de l'archive FMU.
 
 ## Prérequis
 
