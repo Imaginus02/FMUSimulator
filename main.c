@@ -20,9 +20,9 @@
 
 #define FMI_VERSION 2
 
-#ifndef fmuGUID
-#define fmuGUID "{1AE5E10D-9521-4DE3-80B9-D0EAAA7D5AF1}"
-#endif
+// #ifndef fmuGUID
+// #define fmuGUID "{1AE5E10D-9521-4DE3-80B9-D0EAAA7D5AF1}"
+// #endif
 
 #ifndef DEBUG
 #define INFO(message, ...)
@@ -156,16 +156,31 @@ SimulationState* initializeSimulation(FMU *fmu, double tEnd, double h) {
     fmi2CallbackFunctions callbacks = {fmuLogger, calloc, free, NULL, fmu};
 
     // Instantiate the FMU
-    state->component = fmu->instantiate("BouncingBall", fmi2ModelExchange, 
-                                      fmuGUID, NULL, &callbacks, fmi2False, fmi2False);
+    state->component = fmu->instantiate(model.modelName, fmi2ModelExchange, 
+                                      model.guid, NULL, &callbacks, fmi2False, fmi2False);
     if (!state->component) {
         free(state);
         return NULL;
     }
 
-    // Get state dimensions
-    state->nx = getNumberOfContinuousStates(state->component);
-    state->nz = getNumberOfEventIndicators(state->component);
+// Get state dimensions
+// #if defined(getNumberOfContinuousStates)
+// #if defined(getNumberOfEventIndicators)
+//     if (getNumberOfContinuousStates != NULL && getNumberOfEventIndicators != NULL) {
+//         INFO("Retrieved NumberOfContinuouseStates and NumberOfEventIndicators using functions")
+//         state->nx = getNumberOfContinuousStates(state->component);
+//         state->nz = getNumberOfEventIndicators(state->component);
+//     }
+// #endif
+// #endif
+// printf("ContinuousStates: %d\nEventIndicators: %d",state->nx, state->nz);
+// #ifndef getNumberOfContinuousStates
+    state->nx = model.numberOfContinuousStates;
+// #endif
+
+// #ifndef getNumberOfEventIndicators
+    state->nz = model.numberOfEventIndicators;
+// #endif
 
     // Allocate memory for states and indicators
     state->x = (double*)calloc(state->nx, sizeof(double));
