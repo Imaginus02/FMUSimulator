@@ -15,6 +15,7 @@
 // Other necessary files
 #include "fmi2.c"
 #include "modelDescription.c"
+#include "memory.c"
 
 
 // If DEBUG is defined, INFO will print messages to the console
@@ -144,21 +145,21 @@ void cleanupSimulation(FMU *fmu, SimulationState *state) {
     }
 
     // Free state variables
-    if (state->x) free(state->x);
-    if (state->xdot) free(state->xdot);
-    if (state->z) free(state->z);
-    if (state->prez) free(state->prez);
+    if (state->x) freeMemory(state->x);
+    if (state->xdot) freeMemory(state->xdot);
+    if (state->z) freeMemory(state->z);
+    if (state->prez) freeMemory(state->prez);
 
     // Free output array
     if (state->output) {
         for (int i = 0; i < state->nVariables + 1; i++) {
-            if (state->output[i]) free(state->output[i]);
+            if (state->output[i]) freeMemory(state->output[i]);
         }
-        free(state->output);
+        freeMemory(state->output);
     }
 
     // Free the state structure itself
-    free(state);
+    freeMemory(state);
 }
 
 
@@ -171,7 +172,7 @@ void cleanupSimulation(FMU *fmu, SimulationState *state) {
  * @return SimulationState* Pointer to initialized simulation state, NULL if error
  */
 SimulationState* initializeSimulation(FMU *fmu, double tStart, double tEnd, double h) {
-    SimulationState *state = (SimulationState*)calloc(1, sizeof(SimulationState));
+    SimulationState *state = (SimulationState*)allocateMemory(1,sizeof(SimulationState));
     if (!state) return NULL;
 
     state->time = 0;
@@ -184,7 +185,7 @@ SimulationState* initializeSimulation(FMU *fmu, double tStart, double tEnd, doub
     state->nStepEvents = 0;
 
     // Setup callback functions
-    fmi2CallbackFunctions callbacks = {fmuLogger, calloc, free, NULL, fmu};
+    fmi2CallbackFunctions callbacks = {fmuLogger, allocateMemory, freeMemory, NULL, fmu};
 
     // Instantiate the FMU
     state->component = fmu->instantiate(model.modelName, fmi2ModelExchange, 
@@ -198,11 +199,11 @@ SimulationState* initializeSimulation(FMU *fmu, double tStart, double tEnd, doub
     state->nz = model.numberOfEventIndicators;
 
     // Allocate memory for states and indicators
-    state->x = (double*)calloc(state->nx, sizeof(double));
-    state->xdot = (double*)calloc(state->nx, sizeof(double));
+    state->x = (double*)allocateMemory(state->nx,sizeof(double));
+    state->xdot = (double*)allocateMemory(state->nx,sizeof(double));
     if (state->nz > 0) {
-        state->z = (double*)calloc(state->nz, sizeof(double));
-        state->prez = (double*)calloc(state->nz, sizeof(double));
+        state->z = (double*)allocateMemory(state->nz,sizeof(double));
+        state->prez = (double*)allocateMemory(state->nz,sizeof(double));
     }
 
     if ((!state->x || !state->xdot) || 
@@ -259,11 +260,10 @@ SimulationState* initializeSimulation(FMU *fmu, double tStart, double tEnd, doub
     // Initialize variables and output array
     get_variable_list(&state->variables);
     state->nVariables = get_variable_count();
-    state->output = (double**)calloc(state->nVariables, sizeof(double*));
-    for (int i = 0; i < state->nVariables; i++) {
-        state->output[i] = (double*)calloc((size_t)(tEnd/h + 10), sizeof(double));
+    state->output = (double**)allocateMemory(state->nVariables+1,sizeof(double*));
+    for (int i = 0; i < state->nVariables+1; i++) {
+        state->output[i] = (double*)allocateMemory((size_t)(tEnd/h + 10),sizeof(double));
     }
-
     // Initialize first output values
     for (int i = 0; i < state->nVariables; i++) {
         if (state->variables[i].type == REAL) {
@@ -277,6 +277,7 @@ SimulationState* initializeSimulation(FMU *fmu, double tStart, double tEnd, doub
             state->output[i][0] = (double)intValue;
         }
     }
+    state->output[state->nVariables][0] = (double)currentMemory;
     return state;
 }
 
@@ -403,6 +404,7 @@ fmi2Status simulationDoStep(FMU *fmu, SimulationState *state) {
             state->output[i][state->nSteps] = (double)intValue;
         }
     }
+    state->output[state->nVariables][state->nSteps] = (double)currentMemory;
 
     state->nSteps++;
     return fmi2OK;
@@ -420,8 +422,12 @@ void printOutput(SimulationState *state) {
     // Print the output
     for (int j = 0; j < state->nSteps; j++) {
         printf("Step %d: ", j);
-        for (int i = 0; i < state->nVariables; i++) {
-            printf("%s=%f ", state->variables[i].name, state->output[i][j]);
+        for (int i = 0; i < state->nVariables+1; i++) {
+            if (i < state->nVariables) {
+                printf("%s=%f ", state->variables[i].name, state->output[i][j]);
+            } else {
+                printf("memory=%f ", state->output[i][j]);
+            }
         }
         printf("\n");
     }
